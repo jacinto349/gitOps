@@ -1,0 +1,51 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: {{ .Values.microservices.demoapp2.name }}
+#  namespace: demoapp2
+spec:
+  replicas: {{ .Values.microservices.demoapp2.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ .Values.microservices.demoapp2.name }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.microservices.demoapp2.name }}
+    spec:
+      containers:
+      - name: {{ .Values.microservices.demoapp2.name }}
+        image: {{ .Values.microservices.demoapp2.image }}:{{ .Values.microservices.demoapp2.version }}
+        ports:
+        - containerPort: {{ .Values.microservices.demoapp2.containerPort }}
+        readinessProbe:
+          httpGet:
+            path: /index.html
+            port: {{ .Values.microservices.demoapp2.containerPort }}
+          initialDelaySeconds: {{ .Values.microservices.demoapp2.probe.readiness.initialDelaySeconds }}
+          periodSeconds: {{ .Values.microservices.demoapp2.probe.readiness.periodSeconds }}
+          failureThreshold: {{ .Values.microservices.demoapp2.probe.readiness.failureThreshold }}
+        livenessProbe:
+          httpGet:
+            path: /index.html
+            port: {{ .Values.microservices.demoapp2.containerPort }}
+          initialDelaySeconds: {{ .Values.microservices.demoapp2.probe.liveness.initialDelaySeconds }}
+  minReadySeconds: {{ .Values.microservices.demoapp2.minReadySeconds }}
+  revisionHistoryLimit: {{ .Values.microservices.demoapp2.revisionHistoryLimit }}
+  strategy:
+    canary: #Indicates that the rollout should use the Canary strategy
+      steps:
+      - setWeight: 20
+      - pause:
+          duration: 1m # 1 minute
+      - setWeight: 40
+      - pause:
+          duration: 1m # 1 minute
+      - setWeight: 60
+      - pause:
+          duration: 1m # 1 minute
+      - setWeight: 80
+      - pause:
+          duration: 1m # 1 minute
+      - setWeight: 100
+      - pause: {} # pause indefinitely
