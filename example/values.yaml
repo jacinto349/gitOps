@@ -1,0 +1,50 @@
+microservices:
+  demoapp1:
+    name: demo-app1
+    image: nginx
+    version: latest
+    pullPolicy: Always
+    replicaCount: 1
+    containerPort: 80
+    minReadySeconds: 30
+    revisionHistoryLimit: 3
+    configmap:
+      env:
+        VAR1: var1
+    service:
+      type: ClusterIP
+      port: 9090
+    probe:
+      readiness:
+        initialDelaySeconds: 20
+        periodSeconds: 15
+        failureThreshold: 6
+      liveness:
+        initialDelaySeconds: 120
+    ingress:
+      domainName: demo-app1.demo-domain.com
+
+  demoapp2:
+    name: demo-app2
+    image: nginx
+    version: latest
+    pullPolicy: Always
+    replicaCount: 1
+    containerPort: 80
+    minReadySeconds: 30
+    revisionHistoryLimit: 3
+    configmap:
+      env:
+        VAR1: var1
+    service:
+      type: ClusterIP
+      port: 9090
+    probe:
+      readiness:
+        initialDelaySeconds: 20
+        periodSeconds: 15
+        failureThreshold: 6
+      liveness:
+        initialDelaySeconds: 120
+    ingress:
+      domainName: demo-app2.demo-domain.com
