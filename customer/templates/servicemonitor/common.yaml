@@ -1,0 +1,45 @@
+{{- $namespace := .Release.Namespace }}
+{{- range .Values.microservices }}
+{{- $name := .name }}
+{{- with .servicemonitor }}
+
+---
+
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: metrics-{{ .name | default $name }}
+  {{- $data := dict "root" . "name" $name }}
+  {{- include "template.labels" $data | indent 2 }}
+spec:
+  {{- with .endpoints }}
+  endpoints:
+  {{- range . }}
+  - interval: {{ .interval }}
+    port: {{ .port }}
+    path: {{ .path }}
+  {{- end }}
+  {{- end }}
+
+  {{- with .namespaceSelector }}
+  namespaceSelector:
+    {{- with .matchNames }}
+    matchNames:
+    {{- range . }}
+    - {{.}}
+    {{- end }}
+    {{- end }}
+  {{- end }}
+
+  {{- with .selector }}
+  selector:
+    {{- with .matchLabels }}
+    matchLabels:
+      {{- range $key, $value := . }}
+      {{ $key }}: {{ $value }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+
+{{- end }}
+{{- end }}
