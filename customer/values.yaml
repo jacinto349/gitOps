@@ -1,0 +1,92 @@
+microservices:
+  - name: customer-domain
+    service:
+      labels:
+        service: srv-customer-domain
+      ports:
+        - port: 8080
+          name: http
+      selector:
+        app: customer-domain
+    deployment:
+      name: customer-domain
+      image: 34.233.44.173.nip.io/repository/docker-hosted/longinus/customer-domain
+      version: 1.0.6-stg
+      serviceAccountName: shared
+      imagePullPolicy: Always
+      env:
+        - name: START_SLEEP
+          value: "'5'"
+        - name: SPRING_SLEUTH_OTEL_EXPORTER_OTLP_ENPOINT
+          value: "http://localhost:4317" 
+        - name: SPRING_DATASOURCE_URL
+          value: "jdbc:postgresql://db-postgresql-hl.dbs.svc.cluster.local:5432/customer_domain_bo"
+        - name: SPRING_DATASOURCE_USERNAME
+          value: postgres
+        - name: SPRING_DATASOURCE_PASSWORD
+          value: pass 
+        - name: MESSAGING_BASEURL_DATABASEADAPTER
+          value: "http://srv-databaseadapter.adp-bo.svc.cluster.local:8080"
+        - name: JAVA_OPTS
+          value: "-Xmx1024m -Xms256m"
+      livenessProbe:
+        httpGet:
+          path: /actuator/health/liveness
+          port: 8080
+        initialDelaySeconds: 120
+        periodSeconds: 10
+        timeoutSeconds: 10
+      readinessProbe:
+        httpGet:
+          path: /actuator/health/readiness
+          port: 8080
+        initialDelaySeconds: 120
+        periodSeconds: 10
+        timeoutSeconds: 10
+      ports:
+        - containerPort: 8080
+          protocol: TCP
+      imagePullSecrets: [{ name: docker-hosted2 }]
+    servicemonitor:
+      name: customer-domain
+      labels:
+        heritage: Tiller
+        io.cattle.field/appId: cluster-monitoring
+        release: cluster-monitoring
+        source: customer-domain
+      endpoints:
+        - interval: 30s
+          port: http
+          path: /actuator/prometheus
+      namespaceSelector:
+        matchNames:
+        - NS_MATCH
+      selector:
+        matchLabels:
+          app: customer-domain
+    rollout:
+      replicas: 1
+      minReadySeconds: 30
+      revisionHistoryLimit: 4
+      selector:
+        matchLabels:
+          app: customer-domain
+      strategy:
+        canary:
+          steps:
+          - setWeight: 20
+          - pause:
+              duration: 1m # 1 minute
+          - setWeight: 40
+          - pause:
+              duration: 1m # 1 minute
+          - setWeight: 60
+          - pause:
+              duration: 1m # 1 minute
+          - setWeight: 80
+          - pause:
+              duration: 1m # 1 minute
+          - setWeight: 100
+          - pause: {} # pause indefinitely
+    serviceaccount:
+      name: "shared"
