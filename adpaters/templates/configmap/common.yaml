@@ -1,0 +1,21 @@
+{{- $namespace := .Release.Namespace }}
+{{- range .Values.microservices }}
+{{- $name := .name }}
+{{- with .configmap }}
+
+---
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ default $name .name }}
+  {{- $data := dict "root" . "name" $name }}
+  {{- include "template.labels" $data | indent 2 }}
+data:
+{{- range $key, $value := .data }}
+  {{ $key }}: |
+{{ $value | indent 4 }}
+
+{{- end }}
+{{- end }}
+{{- end }}
