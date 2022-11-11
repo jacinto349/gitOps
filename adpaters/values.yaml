@@ -1,0 +1,94 @@
+microservices:
+  - name: databaseadapter
+    service:
+      labels:
+        service: srv-databaseadapter
+      ports:
+        - port: 8080
+          name: http
+      selector:
+        app: databaseadapter
+    deployment:
+      name: databaseadapter
+      image: 34.233.44.173.nip.io/repository/docker-hosted/longinus/databaseadapter
+      version: 1.0.5-stg
+      serviceAccountName: shared
+      imagePullPolicy: Always
+      env:
+        - name: START_SLEEP
+          value: "'5'"
+        - name: SPRING_DATA_MONGODB_URI
+          value: "mongodb://cus-db-bo:cus_l0ng1nus@mongo.dbs.svc.cluster.local:27017/customer_database_adapter_db_bo" 
+        - name: SPRING_DATA_MONGODB_DATABASE
+          value: "customer_database_adapter_db_bo"
+        - name: SPRING_REDIS_HOST
+          value: redis-stack-server-headless.dbs.svc.cluster.local
+        - name: SPRING_REDIS_PASSWORD
+          value: pass
+        - name: SPRING_REDIS_PORT
+          value: "'6379'"
+        - name: SPRING_REDIS_PASSWORD
+          value: "pass"
+        - name: JAVA_OPTS
+          value: "-Xmx1024m -Xms256m"
+      livenessProbe:
+        httpGet:
+          path: /actuator/health/liveness
+          port: 8080
+        initialDelaySeconds: 20
+        periodSeconds: 10
+        timeoutSeconds: 10
+      readinessProbe:
+        httpGet:
+          path: /actuator/health/readiness
+          port: 8080
+        initialDelaySeconds: 20
+        periodSeconds: 10
+        timeoutSeconds: 10
+      ports:
+        - containerPort: 8080
+          protocol: TCP
+      imagePullSecrets: [{ name: docker-hosted2 }]
+    servicemonitor:
+      name: databaseadapter
+      labels:
+        heritage: Tiller
+        io.cattle.field/appId: cluster-monitoring
+        release: cluster-monitoring
+        source: databaseadapter
+      endpoints:
+        - interval: 30s
+          port: http
+          path: /actuator/prometheus
+      namespaceSelector:
+        matchNames:
+        - NS_MATCH
+      selector:
+        matchLabels:
+          app: databaseadapter
+    rollout:
+      replicas: 1
+      minReadySeconds: 30
+      revisionHistoryLimit: 4
+      selector:
+        matchLabels:
+          app: databaseadapter
+      strategy:
+        canary:
+          steps:
+          - setWeight: 20
+          - pause:
+              duration: 1m # 1 minute
+          - setWeight: 40
+          - pause:
+              duration: 1m # 1 minute
+          - setWeight: 60
+          - pause:
+              duration: 1m # 1 minute
+          - setWeight: 80
+          - pause:
+              duration: 1m # 1 minute
+          - setWeight: 100
+          - pause: {} # pause indefinitely
+    serviceaccount:
+      name: "shared"
