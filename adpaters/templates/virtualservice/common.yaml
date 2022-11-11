@@ -1,0 +1,61 @@
+{{- range .Values.microservices }}
+{{- $name := .name }}
+{{- with .virtualservice}}
+
+---
+
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: {{ .name | default $name }}
+  {{- $data := dict "root" . "name" $name }}
+  {{- include "template.labels" $data | indent 2 }}
+spec:
+ {{- if .gateways }}
+  gateways:
+  {{- range .gateways}}
+    - {{.}}
+  {{- end }}
+  {{- else }}
+  gateways:
+    - prod-gateway
+  {{- end }}
+
+  {{- if .hosts }}
+  hosts:
+  {{- range .hosts}}
+    - {{.}}
+  {{- end }}
+  {{- else }}
+  hosts:
+  - '*'
+  {{- end }}
+
+  http:
+  - match:
+    - uri:
+        prefix: {{ .prefix }}
+    {{- with .retries }}
+    retries:
+      attempts: {{ .attempts | default 3 }}
+      perTryTimeout: {{ .perTryTimeout | default "1s" }}
+      retryOn: {{ .retryOn | default "gateway-error,connect-failure,refused-stream"}}
+    {{- end }}
+    {{- with .rewrite }}
+    rewrite:
+      uri: {{ .uri }}
+    {{- end }}
+    {{- with .route }}
+    route:
+    {{- range . }}
+    - destination:
+        host: {{ .host }}
+        {{- if .portnumber }}
+        port:
+          number: {{ .portnumber }}
+        {{- end }}
+      weight: {{ .weight }}
+    {{- end }}
+    {{- end }}
+{{- end }}
+{{- end }}
