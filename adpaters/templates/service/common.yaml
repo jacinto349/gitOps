@@ -1,0 +1,34 @@
+{{- $namespace := .Release.Namespace }}
+{{- range .Values.microservices }}
+{{- $name := .name }}
+{{- with .service }}
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: srv-{{ .name | default $name }}
+  {{- $data := dict "root" . "name" $name }}
+  {{- include "template.labels" $data | indent 2 }}
+spec:
+  type: {{ .type | default "ClusterIP" }}
+{{- if and (eq .type "LoadBalancer") .loadBalancerSourceRanges }}
+  loadBalancerSourceRanges:
+  {{ with .loadBalancerSourceRanges }}
+{{ toYaml . | indent 4 }}
+{{- end }}
+{{- end }}
+  {{- if (and (eq .type "LoadBalancer") (not (empty .loadBalancerIP))) }}
+  loadBalancerIP: {{ .loadBalancerIP }}
+  {{- end }}
+  {{- include "template.ports" . | indent 2}}
+
+  selector:
+    {{ toYaml .selector | indent 4 | trim }}
+
+
+
+
+{{- end }}
+{{- end }}
