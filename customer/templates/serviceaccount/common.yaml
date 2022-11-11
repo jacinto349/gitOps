@@ -1,0 +1,21 @@
+{{- $namespace := .Release.Namespace }}
+{{- range .Values.microservices }}
+{{- $name := .name }}
+{{- with .serviceaccount }}
+
+---
+
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ .name | default $name }}
+  {{- $data := dict "root" . "name" $name }}
+  {{- include "template.labels" $data | indent 2 }}
+{{- if .secrets}}
+secrets:
+  {{- range .secrets }}
+  - name: {{ .name }}
+  {{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
