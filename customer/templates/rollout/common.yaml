@@ -1,0 +1,441 @@
+{{- range .Values.microservices }}
+{{- $name := .name  }}
+{{- $version := .version  }}
+{{- $depname := .deployment.name }}
+{{- $data := dict "root" . "name" $name }}
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: {{ .rollout.name | default $name }}
+spec:
+  replicas: {{ .rollout.replicas | default 1 }}
+  {{- if .rollout.selector }}
+  selector:
+    {{- with .rollout.selector.matchLabels}}
+    matchLabels:
+      {{- range $key, $value := . }}
+      {{ $key }}: {{ $value }}
+      {{- end }}
+    {{- end }}
+  {{- else }}
+  selector:
+    matchLabels:
+      app: {{ $name }}
+      version: {{ $version | default "v1" }}
+  {{- end }}
+
+  {{- with .deployment }}
+  template:
+    metadata:
+      annotations:
+        sidecar.istio.io/rewriteAppHTTPProbers: "false"
+      {{- include "template.labels" $data | indent 6 }}
+    spec:
+      {{- with .initContainers }}
+      initContainers:
+      {{- range . }}
+      {{- with .command }}
+      - command:
+      {{- range . }}
+        - {{.}}
+      {{- end }}
+      {{- end }}
+        image: {{ .image }}
+        {{- include "template.securityContext" . | indent 8 }}
+        name: {{default $name .name }}
+        {{- with .volumeMounts  }}
+        volumeMounts:
+        {{- range . }}
+          - mountPath: {{ .mountPath }}
+            name: {{ .name }}
+        {{- end }}
+        {{- end }} 
+      {{- end }}
+    {{- end }}
+      {{- if .serviceAccountName}}
+      serviceAccountName: {{ .serviceAccountName }}
+      {{- end }} 
+      containers:
+      {{- include "template.environment" . | indent 6 }}
+        image: {{ .image }}:{{ .version }}
+        {{- with .command }}
+        command:
+        {{- range . }}
+          - {{.}}
+        {{- end }}
+        {{- end }}
+        imagePullPolicy: Always
+        name: {{ .name | default $name }}
+        {{- include "template.ports" . | indent 8}}
+        {{- include "template.securityContext" . | indent 8 }}
+        {{- with .resources }}
+        resources:
+          {{- with .limits }}
+          limits:
+            cpu: {{ .cpu }}
+            memory: {{ .memory }}
+          {{- end }}
+          {{- with .requests }}
+          requests:
+            cpu: {{ .cpu }}
+            memory: {{ .memory }}
+          {{- end }}
+        {{- end }}
+        {{- with .volumeMounts  }}
+        volumeMounts:
+        {{- range . }}
+          - mountPath: {{ .mountPath }}
+            name: {{ .name }}
+        {{- end }}
+        {{- end }}
+        {{- include "template.startupProbe" . | indent 8 }}
+        {{- include "template.livenessProbe" . | indent 8 }}
+        {{- include "template.readinessProbe" . | indent 8 }}
+      {{- with .imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .volumes  }}
+      volumes:
+      {{- range . }}
+        {{- if .hostPath }}
+        - hostPath:
+            path: {{ .hostPath.path }}
+            type: ""
+          name: {{ .name }}
+        {{- else }}
+        {{- if .persistentVolumeClaim }}
+        - persistentVolumeClaim:
+            claimName: {{ .persistentVolumeClaim.claimName }}
+          name: {{ .name }}
+        {{- else }}
+        {{- if .configMap }}
+        - configMap:
+            defaultMode:  {{ .configMap.defaultMode }}
+          {{- with .configMap.items }}
+            items:
+            {{- range . }}
+            - key: {{ .key }}
+              path:  {{ .path }}
+            {{- end }}
+            {{- end }}
+            name:  {{ .name }}
+            optional: false
+          name:  {{ .name }}
+        {{- else }}
+        - emptyDir: {}
+          name: {{ .name }}
+        {{- end }}
+        {{- end }}
+        {{- end }}
+      {{- end }}
+      {{- end }}
+    {{- end }}
+
+  {{- with .rollout }}
+  {{- if .minReadySeconds }}
+  minReadySeconds: {{ .minReadySeconds }}
+  {{- end }}
+  {{- if .revisionHistoryLimit }}
+  revisionHistoryLimit: {{ .revisionHistoryLimit }}
+  {{- end }}
+
+  {{- with .strategy}}
+  strategy:
+    {{- with .blueGreen }}
+    blueGreen:
+      activeService: {{ .activeService }}
+      {{- with .prePromotionAnalysis }}
+      prePromotionAnalysis:
+        templates:
+        {{- range .templates}}
+        - templateName: {{ .templateName }}
+        {{- end }}
+        args:
+        {{- range .args}}
+        - name: {{ .name }}
+          value: {{ .value }}
+        {{- end }}
+      {{- end }}
+
+      {{- with .postPromotionAnalysis }}
+      postPromotionAnalysis:
+        templates:
+        {{- range .templates}}
+        - templateName: {{ .templateName }}
+        {{- end }}
+        args:
+        {{- range .args}}
+        - name: {{ .name }}
+          value: {{ .value }}
+        {{- end }}
+      {{- end }}
+
+      {{- if .previewService }}
+      previewService: {{ .previewService }}
+      {{- end }}
+      {{- if .previewReplicaCount }}
+      previewReplicaCount: 1
+      {{- end }}
+      {{- if .autoPromotionEnabled }}
+      autoPromotionEnabled: false
+      {{- end }}
+      {{- if .autoPromotionSeconds }}
+      autoPromotionSeconds: 30
+      {{- end }}
+      {{- if .scaleDownDelaySeconds }}
+      scaleDownDelaySeconds: 30
+      {{- end }}
+      {{- if .scaleDownDelayRevisionLimit }}   
+      scaleDownDelayRevisionLimit: 2
+      {{- end }}
+      {{- if .abortScaleDownDelaySeconds }}
+      abortScaleDownDelaySeconds: 30
+      {{- end }}
+      antiAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution: {}
+        preferredDuringSchedulingIgnoredDuringExecution:
+          weight: {{ .antiAffinity | default 1}}
+
+    {{- end }}
+
+    {{- with .canary }}
+    canary: 
+      
+      {{- if .canaryService }}
+      canaryService: {{ .canaryService }}
+      {{- end }}
+      {{- if .stableService }}
+      stableService: {{ .stableService }}
+      {{- end }}
+
+      {{- with .canaryMetadata }}
+      canaryMetadata:
+        annotations:
+          role: {{ .annotationrole | default "canary"}}
+        labels:
+          role: {{ .labelrole | default "canary"}}
+      {{- end }}
+
+      {{- with .stableMetadata }}
+      canaryMetadata:
+        annotations:
+          role: {{ .annotationrole | default "canary"}}
+        labels:
+          role: {{ .labelrole | default "canary"}}
+      {{- end }}
+
+      {{- if .maxUnavailable }}
+      maxUnavailable: {{ .maxUnavailable }}
+      {{- end }}
+      {{- if .maxSurge }}
+      maxSurge: {{ .maxSurge }}
+      {{- end }}
+      {{- if .scaleDownDelaySeconds }}
+      scaleDownDelaySeconds:  {{ .scaleDownDelaySeconds }}
+      {{- end }}
+      {{- if .scaleDownDelayRevisionLimit }}
+      scaleDownDelayRevisionLimit: {{ .scaleDownDelayRevisionLimit }}
+      {{- end }}
+
+      {{- with .analysis }}
+      analysis:
+        templates:
+        {{- range .templates }}
+        - templateName: {{ .templateName }}
+        {{- end }}
+        args:
+        {{- range .args }}
+        - name: {{ .name }}
+          {{- if .value }}
+          value: guestbook-svc.default.svc.cluster.local
+          {{- else }}
+            {{- if .valueFrom }}
+          valueFrom:
+              {{- if .podTemplateHashValue }}
+            podTemplateHashValue: {{ .valueFrom.podTemplateHashValue | default "Stable"}}
+              {{- else }}
+            fieldRef:
+              fieldPath: {{ .valueFrom.fieldRef.fieldPath }}
+              {{- end }}
+
+            {{- end }}
+          {{- end }}
+
+        {{- end }}
+      {{- end }}
+      
+      {{- with .steps }}
+      steps:
+      {{- range . }}
+
+      {{- if .setWeight }}
+      - setWeight: {{ .setWeight }}
+      {{- end }}
+
+      {{- with .pause }}
+      - pause:
+          duration: {{ .duration }}
+      {{- end }}
+
+      {{- with .setCanaryScale }}
+      - setCanaryScale:
+        {{- if .replicas }}
+        replicas: {{ .replicas }}
+        {{- end }}
+        {{- if .weight }}
+        weight: {{ .weight }}
+        {{- end }}
+        {{- if .matchTrafficWeight }}
+        matchTrafficWeight: true
+        {{- end }}
+      {{- end }}
+
+
+      {{- with .setHeaderRoute }}
+      - setHeaderRoute:
+          name: {{- .name }}
+          match:
+            {{- range . }}
+            - headerName: {{ .headerName }}
+              headerValue:
+                exact: {{ .headerValue.exact }}
+                regex: {{ .headerValue.regex }}
+                prefix: {{ .headerValue.prefix }}
+            {{- end }}
+      {{- end }}
+      
+      {{- with .setMirrorRoute }}
+      - setMirrorRoute:
+          name: {{ .name }}
+          percentage: {{ .percentage }}
+          match:
+            {{- range . }}
+            - method:
+                exact: {{ .method.exact }}
+                regex: {{ .method.regex }}
+                prefix: {{ .method.prefix }}
+              path: 
+                exact: {{ .path.exact }}
+                regex: {{ .path.regex }}
+                prefix: {{ .path.prefix }}
+              headers:
+                agent-1b:
+                  exact: {{ .headers.exact }}
+                  regex: {{ .headers.regex }}
+                  prefix: {{ .headers.prefix }}
+            {{- end }}
+      {{- end }}
+
+      {{- with .analysis }}
+      - analysis:
+          templates:
+          {{- range .}}
+          - templateName: {{ .templateName }}
+          {{- end }}
+      {{- end }}
+
+      {{- with .experiment }}
+      - experiment:
+          duration: {{ .duration }}
+          templates:
+          {{- range .}}
+          - name: {{ .name }}
+            specRef: {{ .specRef }}
+          {{- end }}
+          {{- with .analyses }}
+          analyses:
+          {{- range .}}
+          - name : {{ .name }}
+            templateName: {{ .templateName }}
+          {{- end }} 
+          {{- end }}
+      {{- end }}
+
+      {{- if .antiAffinity }}
+      antiAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution: {}
+        preferredDuringSchedulingIgnoredDuringExecution:
+          weight: {{ .weight }}
+      {{- end }}
+
+      {{- with .trafficRouting }}
+      trafficRouting:
+        {{- with .managedRoutes }}
+        managedRoutes:
+          {{- range . }}
+          - name: {{ .name }}
+          {{- end }}
+        {{- end }}
+
+        {{- with .istio }}
+        istio:
+          {{- with .virtualService }}
+          virtualService: 
+            name: {{ .name }}  # required
+            {{- with .routes }}
+            routes:
+            {{- range . }}
+            - {{.}} 
+            {{- end }}
+            {{- end }}
+          {{- end }}
+
+          {{- with .virtualServices }}
+          virtualServices:
+          {{- range . }}
+          - name: {{ .name }}
+            {{- with .routes }}
+            routes:
+            {{- range . }}
+              - {{.}} 
+            {{- end }}
+            {{- end }}
+          {{- end }}
+          {{- end }}
+
+        {{- end }}
+
+
+        {{- with .nginx }}
+        nginx:
+          stableIngress: {{ .stableIngress }}
+          {{- if .annotationPrefix }}
+          annotationPrefix: {{.annotationPrefix }}
+          {{- end }}
+          {{- with .additionalIngressAnnotations }}
+          additionalIngressAnnotations:
+            canary-by-header: {{ .canary_by_header }}
+            canary-by-header-value: {{ .canary_by_headervalue }}
+          {{- end }}
+        {{- end }}
+
+        {{- with .alb }}
+        alb:
+          ingress: {{ .ingress }}
+          servicePort: {{ .servicePort }}
+          {{- if .annotationPrefix }}
+          annotationPrefix: custom.alb.ingress.kubernetes.io
+          {{- end }}
+        {{- end }}
+
+        {{- with .smi }}
+        smi:
+          {{- if .rootService }}
+          rootService: root-svc
+          {{- end }}
+          {{- if .trafficSplitName }}
+          trafficSplitName: rollout-example-traffic-split
+          {{- end }}
+        {{- end }}
+      {{- end }}
+      {{- if .abortScaleDownDelaySeconds }}
+      abortScaleDownDelaySeconds: {{ .abortScaleDownDelaySeconds }}
+      {{- end }}
+    {{- end }}
+    {{- end }}
+  {{- end }}
+  {{- end }}
+
+{{- end }}
+{{- end }}
