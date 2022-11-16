@@ -1,1 +1,91 @@
 
+microservices:
+  - name: service-facade-pa
+    virtualservice:
+      prefix: /v1/pa/Service
+      route:
+        - host: service-facade-pa
+          portnumber: 7031
+          weight: 80
+    servicemonitor:
+      endpoints:
+      - interval: 10s
+        port: http
+        path: test/
+      namespaceSelector:
+        matchNames:
+          - prod
+      selector:
+        matchLabels:
+          app: service
+    ingress:
+      className: test
+      tls:
+        - hosts:
+          - test
+          secretName: test
+      rules:
+        - host: test
+          paths:
+            - path: /test
+              pathType: Exact
+              svcname: test
+              svcport: 80
+    deployment:
+      minReadySeconds: 180
+      progressDeadlineSeconds: 600
+      replicas: 5
+      revisionHistoryLimit: 10
+      env:
+      - name: ENVIRONMENT
+        value: production
+      - name: PORT
+        value: "'7031'"
+      - name: JAVA_MEM_ARGS
+        value: -Xms512m -Xmx1250m -XX:+UseG1GC
+      livenessProbe:
+        httpGet:
+          path: test/
+          port: 80
+        periodSeconds: 1
+        timeoutSeconds: 10
+      image: busybox
+      ports:
+        - containerPort: 7031
+          protocol: TCP
+      resources:
+        limits:
+          cpu: 100m
+          memory: 1350Mi
+        requests:
+          cpu: 25m
+          memory: 512Mi
+      imagePullSecrets: [{ name: cbs }]
+    service:
+      clusterIP: 10.43.87.190
+      ports:
+      - name: http
+        port: 7031
+        protocol: TCP
+        targetPort: 7031
+      selector:
+        app: service-facade-pa
+    horizontalpodautoscaler:
+      maxReplicas: 5
+      minReplicas: 1
+      targetCPUUtilizationPercentage: 80
+    serviceaccount:
+      labels:
+        account: service-sa
+      secrets:
+      - name: service-sa-token-44859
+    secret:
+      data:
+        ca.crt: ZGF0YQo=
+        namespace: ZGF0YQo=
+        token: ZGF0YQo=
+      labels:
+        account: payments-service-sa
+      name: payments-service-sa-token-44859
+    
+    
