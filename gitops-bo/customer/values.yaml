@@ -1,90 +1,92 @@
 microservices:
-  - name: service-facade-pa
-    virtualservice:
-      prefix: /v1/pa/Service
-      route:
-        - host: service-facade-pa
-          portnumber: 7031
-          weight: 80
-    servicemonitor:
-      endpoints:
-      - interval: 10s
-        port: http
-        path: test/
-      namespaceSelector:
-        matchNames:
-          - prod
+  - name: customer-domain
+    service:
+      labels:
+        service: srv-customer-domain
+      ports:
+        - port: 8080
+          name: http
       selector:
-        matchLabels:
-          app: service
-    ingress:
-      className: test
-      tls:
-        - hosts:
-          - test
-          secretName: test
-      rules:
-        - host: test
-          paths:
-            - path: /test
-              pathType: Exact
-              svcname: test
-              svcport: 80
+        app: customer-domain
     deployment:
-      minReadySeconds: 180
-      progressDeadlineSeconds: 600
-      replicas: 5
-      revisionHistoryLimit: 10
+      name: customer-domain
+      image: 34.233.44.173.nip.io/repository/docker-hosted/longinus/customer-domain
+      version: 1.0.6-stg
+      serviceAccountName: shared
+      imagePullPolicy: Always
       env:
-      - name: ENVIRONMENT
-        value: production
-      - name: PORT
-        value: "'7031'"
-      - name: JAVA_MEM_ARGS
-        value: -Xms512m -Xmx1250m -XX:+UseG1GC
+        - name: START_SLEEP
+          value: "'5'"
+        - name: SPRING_SLEUTH_OTEL_EXPORTER_OTLP_ENPOINT
+          value: "http://localhost:4317" 
+        - name: SPRING_DATASOURCE_URL
+          value: "jdbc:postgresql://db-postgresql-hl.dbs.svc.cluster.local:5432/customer_domain_bo"
+        - name: SPRING_DATASOURCE_USERNAME
+          value: postgres
+        - name: SPRING_DATASOURCE_PASSWORD
+          value: pass 
+        - name: MESSAGING_BASEURL_DATABASEADAPTER
+          value: "http://srv-databaseadapter.adp-bo.svc.cluster.local:8080"
+        - name: JAVA_OPTS
+          value: "-Xmx1024m -Xms256m"
       livenessProbe:
         httpGet:
-          path: test/
-          port: 80
-        periodSeconds: 1
+          path: /actuator/health/liveness
+          port: 8080
+        initialDelaySeconds: 120
+        periodSeconds: 10
         timeoutSeconds: 10
-      image: busybox
+      readinessProbe:
+        httpGet:
+          path: /actuator/health/readiness
+          port: 8080
+        initialDelaySeconds: 120
+        periodSeconds: 10
+        timeoutSeconds: 10
       ports:
-        - containerPort: 7031
+        - containerPort: 8080
           protocol: TCP
-      resources:
-        limits:
-          cpu: 100m
-          memory: 1350Mi
-        requests:
-          cpu: 25m
-          memory: 512Mi
-      imagePullSecrets: [{ name: cbs }]
-    service:
-      clusterIP: 10.43.87.190
-      ports:
-      - name: http
-        port: 7031
-        protocol: TCP
-        targetPort: 7031
+      imagePullSecrets: [{ name: docker-hosted2 }]
+    servicemonitor:
+      name: customer-domain
+      labels:
+        heritage: Tiller
+        io.cattle.field/appId: cluster-monitoring
+        release: cluster-monitoring
+        source: customer-domain
+      endpoints:
+        - interval: 30s
+          port: http
+          path: /actuator/prometheus
+      namespaceSelector:
+        matchNames:
+        - NS_MATCH
       selector:
-        app: service-facade-pa
-    horizontalpodautoscaler:
-      maxReplicas: 5
-      minReplicas: 1
-      targetCPUUtilizationPercentage: 80
+        matchLabels:
+          app: customer-domain
+    rollout:
+      replicas: 1
+      minReadySeconds: 30
+      revisionHistoryLimit: 4
+      selector:
+        matchLabels:
+          app: customer-domain
+      strategy:
+        canary:
+          steps:
+          - setWeight: 20
+          - pause:
+              duration: 1m # 1 minute
+          - setWeight: 40
+          - pause:
+              duration: 1m # 1 minute
+          - setWeight: 60
+          - pause:
+              duration: 1m # 1 minute
+          - setWeight: 80
+          - pause:
+              duration: 1m # 1 minute
+          - setWeight: 100
+          - pause: {} # pause indefinitely
     serviceaccount:
-      labels:
-        account: service-sa
-      secrets:
-      - name: service-sa-token-44859
-    secret:
-      data:
-        ca.crt: ZGF0YQo=
-        namespace: ZGF0YQo=
-        token: ZGF0YQo=
-      labels:
-        account: payments-service-sa
-      name: payments-service-sa-token-44859
-    
-    
+      name: "shared"
